@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crud-db
+  labels: 
+    app: crud-mysql
+spec:
+  selector:
+    matchLabels:
+      app: crud-mysql
+      tier: backend
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: crud-mysql
+        tier: backend
+    spec:
+      volumes:
+      - name: pv-crud-storage
+        persistentVolumeClaim:
+          claimName: pv-claim-crud
+      containers:
+      - name:  crud-mysql-master
+        image: and5623/mysql-crud:v2
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+          - mountPath: "/var/lib/mysql"
+            name: pv-crud-storage

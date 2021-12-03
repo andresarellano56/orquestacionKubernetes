@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crud-php
+  labels:
+    app: crud-app
+spec:
+  selector:
+    matchLabels:
+      app: crud-app
+      tier: frontend
+  replicas: 7
+  template:
+    metadata:
+      labels:
+        app: crud-app
+        tier: frontend
+    spec:
+      containers:
+      - name: crud-app-php
+        image: and5623/php-crud:v2
