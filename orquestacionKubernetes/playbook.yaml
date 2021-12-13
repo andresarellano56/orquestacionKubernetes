@@ -1,0 +1,199 @@
+---
+-  name: atomatizacion de desplegue
+   hosts: localhost
+   gather_facts: False
+   
+   pre_tasks:
+  
+     - name: Verificar si minikube esta encendido
+       command: minikube status
+       register: minikube_status
+       changed_when: false
+       ignore_errors: true
+      
+     - name: Arrancar minikube si esta apagado
+       command: minikube start
+       when: "not minikube_status.stdout or 'Running' not in minikube_status.stdout"
+      
+   tasks:  
+     
+     - name: crear el namespace
+       k8s:
+         state: present
+         definition:
+           apiVersion: v1
+           kind: Namespace
+           metadata: 
+             name: aarellano
+             labels:
+               tipo: app-crud
+              
+     - name: crear el volumen
+       k8s:
+         state: present
+         definition:
+           apiVersion: v1
+           kind: PersistentVolume
+           metadata:
+             name: pv-crud-bd
+             namespace: aarellano
+             labels:
+               type: local
+           spec:
+             storageClassName: bdstoragecrud
+             capacity: 
+               storage: 1Gi 
+             accessModes:
+               - ReadWriteOnce
+             hostPath:
+               path: "/var/lib/mysql"
+              
+     - name: crear el volumen claim
+       k8s:
+         state: present
+         definition:                  
+           apiVersion: v1
+           kind: PersistentVolumeClaim
+           metadata:
+             name: pv-claim-crud
+             namespace: aarellano
+           spec:
+             storageClassName: bdstoragecrud
+             accessModes: 
+               - ReadWriteOnce
+             resources:
+               requests:
+                 storage: 1G
+
+     - name: crear el deploy de la base de datos
+       k8s:
+         state: present
+         definition:
+           apiVersion: apps/v1
+           kind: Deployment
+           metadata:
+             name: crud-db
+             namespace: aarellano
+             labels: 
+               app: crud-mysql
+           spec:
+             selector:
+               matchLabels:
+                 app: crud-mysql
+                 tier: backend
+             replicas: 1
+             template:
+               metadata:
+                 namespace: aarellano
+                 labels:
+                   app: crud-mysql
+                   tier: backend
+               spec:
+                 volumes:
+                 - name: pv-crud-storage
+                   persistentVolumeClaim:
+                     claimName: pv-claim-crud
+                 containers:
+                 - name:  crud-mysql-master
+                   image: and5623/mysql-crud:v2
+                   ports:
+                   - containerPort: 3306
+                   volumeMounts:
+                   - mountPath: "/var/lib/mysql"
+                     name: pv-crud-storage
+
+     - name: crear el servicio de la base de datos
+       k8s:
+         state: present
+         definition:
+           apiVersion: v1
+           kind: Service
+           metadata:
+             name: crud-db
+             namespace: aarellano
+             labels: 
+               app: crud-mysql
+               tier: backend
+           spec:
+             ports:
+             - port: 3306
+               targetPort: 3306
+             selector:
+               app: crud-mysql
+               tier: backend
+
+     - name: crear el deploy de la app
+       k8s:
+         state: present
+         definition:
+           apiVersion: apps/v1
+           kind: Deployment
+           metadata:
+             name: crud-php
+             namespace: aarellano
+             labels:
+               app: crud-app
+           spec:
+             selector:
+               matchLabels:
+                 app: crud-app
+                 tier: frontend
+             replicas: 7
+             template:
+               metadata:
+                 namespace: aarellano
+                 labels:
+                   app: crud-app
+                   tier: frontend
+               spec:
+                 containers:
+                 - name: crud-app-php
+                   image: and5623/php-crud:v2
+
+     - name: crear el servicio de la app
+       k8s:
+         state: present
+         definition:
+           apiVersion: v1
+           kind: Service
+           metadata:
+             name: crud-php
+             namespace: aarellano
+             labels:
+               app: crud-app
+               tier: frontend
+           spec:
+             type: NodePort
+             ports:
+             - port: 80
+             selector:
+               app: crud-app
+               tier: frontend	  
+
+     - name: crear el ingress
+       k8s:
+         state: present
+         definition:
+           apiVersion: networking.k8s.io/v1
+           kind: Ingress
+           metadata: 
+             name: ingress-crud
+             namespace: aarellano
+             annotations:
+               ngix.ingress.kubernetes.io/rewrite-target: /
+           spec:
+             rules:
+             - host: app.aarellano.com
+               http:
+                 paths:
+                 - path: /
+                   pathType: Prefix
+                   backend:
+                     service:
+                       name: crud-php
+                       port:
+                         number: 80
+
+        
+
+      
